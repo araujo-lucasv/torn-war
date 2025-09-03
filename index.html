@@ -9,25 +9,34 @@
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 0; background:#0b0f14; color:#e6edf3; }
     header { padding: 16px 20px; background: #0f1720; border-bottom: 1px solid #1f2a37; position: sticky; top: 0; z-index: 5; }
     h1 { margin: 0; font-size: 18px; font-weight: 600; }
+
+    /* layout base */
     main { display: grid; grid-template-columns: 360px 1fr; gap: 16px; padding: 16px; }
+    @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
     .card { background: #0f1720; border: 1px solid #1f2a37; border-radius: 14px; padding: 14px; }
     .card h2 { margin: 0 0 8px; font-size: 16px; }
-    .small { font-size: 12px; color:#9aa7b4; }
+    .small { font-size: 12px; color:#9aa7b4; font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
     input[type="text"], textarea, select { width: 100%; background:#0b131a; color:#e6edf3; border:1px solid #263241; border-radius: 10px; padding:10px; outline: none; }
     textarea { min-height: 90px; resize: vertical; }
     .row { display:flex; gap:10px; align-items:center; }
     .row > * { flex:1; }
-    .btn { background:#1e88e5; color:white; border:none; padding:10px 12px; border-radius:10px; cursor:pointer; font-weight:600; }
+    .btn { background:#1e88e5; color:white; border:none; padding:10px 12px; border-radius:10px; cursor:pointer; font-weight:600; transition: filter .15s ease; }
     .btn.secondary { background:#263241; color:#c7d1db; }
-    .btn.ghost { background:transparent; border:1px solid #263241; }
+    .btn.ghost { background:transparent; border:1px solid #263241; color:#c7d1db; }
     .btn:disabled { opacity: .6; cursor:not-allowed; }
+    .btn:hover { filter: brightness(1.08); }
+    .btn.ghost:hover { border-color:#3b4b5e; }
+    .btn.secondary:hover { background:#2b3a49; }
+
     .list { display:flex; flex-direction: column; gap:8px; max-height: 60vh; overflow:auto; }
-    .item { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px; border:1px solid #1f2a37; border-radius:12px; background:#0b131a; }
+    .item { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px; border:1px solid #1f2a37; border-radius:12px; background:#0b131a; cursor: pointer; }
+    .item a, .item input, .item button { cursor: auto; }
     .item .meta { display:flex; flex-direction:column; }
     .pill { font-size:11px; padding:2px 8px; border:1px solid #263241; border-radius:999px; color:#a9b6c3; }
     .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:12px; }
     .stat { background:#0b131a; border:1px solid #1f2a37; border-radius:12px; padding:10px; }
-    .stat h3 { margin:0 0 6px; font-size:14px; }
+    .stat h3 { margin:0 0 6px; font-size:14px; display:flex; justify-content:space-between; gap:8px; }
     .muted { color:#9aa7b4; font-size:12px; }
     .badge { display:inline-block; padding:2px 8px; border-radius:8px; font-size:12px; border:1px solid #263241; }
     .danger { color:#ffb4b4; }
@@ -37,8 +46,43 @@
     .cols { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
     .help { font-size: 12px; color:#8aa0b5; }
     .divider { height: 1px; background:#1f2a37; margin: 8px 0; }
-    .loading { font-size: 12px; color: #c7d1db; }
-    .toolbar { display:grid; grid-template-columns: 1fr 180px; gap:8px; margin-bottom:8px; }
+    .loading { font-size: 12px; color: #c7d1db; position: relative; padding-left: 26px; }
+    .loading::before {
+      content: ""; position: absolute; left: 0; top: 50%; width: 16px; height: 16px;
+      transform: translateY(-50%); border: 2px solid #263241; border-top-color: #6ab7ff; border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: translateY(-50%) rotate(360deg); } }
+
+    .toolbar { display:grid; grid-template-columns: 1fr 180px; gap:8px; margin-bottom:8px;
+               position: sticky; top: 0; background: #0f1720; padding-top:8px; padding-bottom:8px; z-index: 4; border-bottom: 1px solid #1f2a37; }
+
+    /* foco acessível */
+    .btn:focus, input:focus, select:focus, textarea:focus, a:focus {
+      outline: 2px solid #6ab7ff; outline-offset: 2px;
+    }
+
+    /* Toggle “Mostrar só status” – sem JS */
+    .compact-toggle { display:inline-flex; gap:8px; align-items:center; margin:12px 16px 0; }
+    #compact { display:none; }
+    #compact:checked ~ main { grid-template-columns: 0 1fr; }
+    #compact:checked ~ main > section:first-child { display:none; }
+    .compact-toggle .hint::before { content: "Mostrar só status"; }
+    #compact:checked + label .hint::before { content: "Mostrar tudo"; }
+
+    /* <details> estilizado (coluna esquerda) */
+    details[open] > summary .summary-caret::before { content: "▲ "; }
+    details:not([open]) > summary .summary-caret::before { content: "▼ "; }
+    summary { cursor:pointer; list-style:none; }
+    summary::-webkit-details-marker { display: none; }
+
+    @media (min-width: 1200px) { .grid { gap: 16px; } }
+    @media (max-width: 600px) {
+      .card { padding: 12px; }
+      .item { padding: 8px; }
+      .btn { padding: 10px; }
+      .compact-toggle { margin: 10px 12px 0; }
+    }
   </style>
 </head>
 <body>
@@ -46,54 +90,69 @@
     <h1>Torn – Importar Perfis da Planilha → Selecionar Destaques → Buscar Status</h1>
   </header>
 
+  <!-- Toggle global: oculta a coluna esquerda quando marcado (100% CSS) -->
+  <input type="checkbox" id="compact" />
+  <label for="compact" class="compact-toggle">
+    <button class="btn ghost" type="button">⟷</button>
+    <span class="small hint"></span>
+  </label>
+
   <main>
     <!-- Esquerda -->
     <section class="card" style="height: fit-content; align-self: start;">
-      <h2>1) Carregar planilha</h2>
-      <p class="small">Use um <b>link CSV publicado</b> do Google Sheets (<i>Arquivo → Compartilhar → Publicar na web → CSV</i>) ou cole os dados abaixo.</p>
-      <div class="row">
-        <input id="csvUrl" type="text" placeholder="URL CSV publicado do Google Sheets (opcional)" />
-        <button class="btn" id="btnFetchCsv">Buscar CSV</button>
-      </div>
-      <div style="height:8px"></div>
-      <textarea id="csvText" placeholder="Cabeçalhos esperados: id,member,total&#10;Ex.:&#10;id,member,total&#10;12345,Fulano,123456789&#10;67890,Ciclano,987654321"></textarea>
-      <div style="height:8px"></div>
-      <div class="row">
-        <button class="btn" id="btnParseCsv">Ler CSV</button>
-        <button class="btn secondary" id="btnClearCsv">Limpar</button>
-      </div>
+      <!-- Acordeão sem JS: você ainda vê a esquerda em modo “não-compacto”, mas pode recolher -->
+      <details open>
+        <summary>
+          <h2 style="display:inline">1) Carregar planilha</h2>
+          <span class="small summary-caret" style="margin-left:8px">clique para recolher/expandir</span>
+        </summary>
+        <div style="height:8px"></div>
 
-      <div class="divider"></div>
-      <h2>2) Mapeie as colunas</h2>
-      <div class="cols" style="grid-template-columns: 1fr 1fr 1fr;">
-        <div>
-          <label class="small">Coluna do <b>ID (XID)</b></label>
-          <select id="colId"></select>
+        <p class="small">Use um <b>link CSV publicado</b> do Google Sheets (<i>Arquivo → Compartilhar → Publicar na web → CSV</i>) ou cole os dados abaixo.</p>
+        <div class="row">
+          <input id="csvUrl" type="text" placeholder="URL CSV publicado do Google Sheets (opcional)" />
+          <button class="btn" id="btnFetchCsv">Buscar CSV</button>
         </div>
-        <div>
-          <label class="small">Coluna do <b>Nome (member)</b></label>
-          <select id="colName"></select>
+        <div style="height:8px"></div>
+        <textarea id="csvText" placeholder="Cabeçalhos esperados: id,member,total&#10;Ex.:&#10;id,member,total&#10;12345,Fulano,123456789&#10;67890,Ciclano,987654321"></textarea>
+        <div style="height:8px"></div>
+        <div class="row">
+          <button class="btn" id="btnParseCsv">Ler CSV</button>
+          <button class="btn secondary" id="btnClearCsv">Limpar</button>
         </div>
-        <div>
-          <label class="small">Coluna do <b>Total (stats)</b></label>
-          <select id="colTotal"></select>
-        </div>
-      </div>
-      <div style="height:8px"></div>
-      <button class="btn" id="btnBuildList" disabled>Construir lista de perfis</button>
 
-      <div class="divider"></div>
-      <h2>Shortlist (destaques)</h2>
-      <p class="help">Marque os perfis na lista da direita para adicioná-los aqui. Remova com “Remover”.</p>
-      <div id="shortlist" class="list"></div>
+        <div class="divider"></div>
+        <h2>2) Mapeie as colunas</h2>
+        <div class="cols" style="grid-template-columns: 1fr 1fr 1fr;">
+          <div>
+            <label class="small">Coluna do <b>ID (XID)</b></label>
+            <select id="colId"></select>
+          </div>
+          <div>
+            <label class="small">Coluna do <b>Nome (member)</b></label>
+            <select id="colName"></select>
+          </div>
+          <div>
+            <label class="small">Coluna do <b>Total (stats)</b></label>
+            <select id="colTotal"></select>
+          </div>
+        </div>
+        <div style="height:8px"></div>
+        <button class="btn" id="btnBuildList" disabled>Construir lista de perfis</button>
 
-      <div class="divider"></div>
-      <h2>Chave da API Torn</h2>
-      <input id="apiKey" type="text" value="U3pBMJyMyT7n5Dbu" />
-      <p class="help">Campos: <code>life.current</code>, <code>life.maximum</code>, <code>status.state</code>, <code>status.description</code>, <code>last_action.status</code>, <code>last_action.relative</code>.</p>
-      <div class="sticky-actions">
-        <button class="btn" id="btnFetchSelected" disabled>Buscar status dos selecionados</button>
-      </div>
+        <div class="divider"></div>
+        <h2>Shortlist (destaques)</h2>
+        <p class="help">Marque os perfis na lista da direita para adicioná-los aqui. Remova com “Remover”.</p>
+        <div id="shortlist" class="list"></div>
+
+        <div class="divider"></div>
+        <h2>Chave da API Torn</h2>
+        <input id="apiKey" type="text" value="U3pBMJyMyT7n5Dbu" />
+        <p class="help">Campos: <code>life.current</code>, <code>life.maximum</code>, <code>status.state</code>, <code>status.description</code>, <code>last_action.status</code>, <code>last_action.relative</code>.</p>
+        <div class="sticky-actions">
+          <button class="btn" id="btnFetchSelected" disabled>Buscar status dos selecionados</button>
+        </div>
+      </details>
     </section>
 
     <!-- Direita -->
@@ -120,6 +179,7 @@
     </section>
   </main>
 
+  <!-- SEU SCRIPT (inalterado) -->
   <script>
     // Estado
     const state = {
@@ -320,7 +380,7 @@
 
     // Torn API
     async function fetchTornUser(id, key) {
-      const url = `https://api.torn.com/user/${encodeURIComponent(id)}?selections=profile,basic&key=${encodeURIComponent(key)}`;
+      const url = `https://api.torn.com/user/${encodeURIComponent(id)}?selections=basic&key=${encodeURIComponent(key)}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`Falha ao consultar ${id}: HTTP ${res.status}`);
       const data = await res.json();
