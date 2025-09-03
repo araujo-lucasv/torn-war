@@ -380,7 +380,7 @@
 
     // Torn API
     async function fetchTornUser(id, key) {
-      const url = `https://api.torn.com/user/${encodeURIComponent(id)}?selections=basic&key=${encodeURIComponent(key)}`;
+      const url = `https://api.torn.com/user/${encodeURIComponent(id)}?selections=profile,basic&key=${encodeURIComponent(key)}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`Falha ao consultar ${id}: HTTP ${res.status}`);
       const data = await res.json();
