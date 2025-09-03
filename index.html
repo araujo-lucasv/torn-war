@@ -16,7 +16,7 @@
 
     .card { background: #0f1720; border: 1px solid #1f2a37; border-radius: 14px; padding: 14px; }
     .card h2 { margin: 0 0 8px; font-size: 16px; }
-    .small { font-size: 12px; color:#9aa7b4; font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .small { font-size: 12px; color:#9aa7b4; }
     input[type="text"], textarea, select { width: 100%; background:#0b131a; color:#e6edf3; border:1px solid #263241; border-radius: 10px; padding:10px; outline: none; }
     textarea { min-height: 90px; resize: vertical; }
     .row { display:flex; gap:10px; align-items:center; }
@@ -46,8 +46,11 @@
     .cols { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
     .help { font-size: 12px; color:#8aa0b5; }
     .divider { height: 1px; background:#1f2a37; margin: 8px 0; }
+
+    /* statusMessage: spinner só quando .is-loading */
     .loading { font-size: 12px; color: #c7d1db; position: relative; padding-left: 26px; }
-    .loading::before {
+    .loading::before { content: none; }
+    .loading.is-loading::before {
       content: ""; position: absolute; left: 0; top: 50%; width: 16px; height: 16px;
       transform: translateY(-50%); border: 2px solid #263241; border-top-color: #6ab7ff; border-radius: 50%;
       animation: spin 1s linear infinite;
@@ -62,13 +65,11 @@
       outline: 2px solid #6ab7ff; outline-offset: 2px;
     }
 
-    /* Toggle “Mostrar só status” – sem JS */
-    .compact-toggle { display:inline-flex; gap:8px; align-items:center; margin:12px 16px 0; }
+    /* Toggle “Mostrar só status” (sem JS) */
     #compact { display:none; }
+    /* quando marcar, esconde a 1ª coluna e expande a 2ª */
     #compact:checked ~ main { grid-template-columns: 0 1fr; }
-    #compact:checked ~ main > section:first-child { display:none; }
-    .compact-toggle .hint::before { content: "Mostrar só status"; }
-    #compact:checked + label .hint::before { content: "Mostrar tudo"; }
+    #compact:checked ~ main > section:first-child { display: none; }
 
     /* <details> estilizado (coluna esquerda) */
     details[open] > summary .summary-caret::before { content: "▲ "; }
@@ -81,7 +82,6 @@
       .card { padding: 12px; }
       .item { padding: 8px; }
       .btn { padding: 10px; }
-      .compact-toggle { margin: 10px 12px 0; }
     }
   </style>
 </head>
@@ -90,17 +90,17 @@
     <h1>Torn – Importar Perfis da Planilha → Selecionar Destaques → Buscar Status</h1>
   </header>
 
-  <!-- Toggle global: oculta a coluna esquerda quando marcado (100% CSS) -->
-  <input type="checkbox" id="compact" />
-  <label for="compact" class="compact-toggle">
+  <!-- Toggle global: oculta a coluna esquerda quando marcado (sem JS) -->
+  <input type="checkbox" id="compact" hidden />
+  <label for="compact" style="display:inline-flex;gap:8px;align-items:center;margin:12px 16px 0;">
     <button class="btn ghost" type="button">⟷</button>
-    <span class="small hint"></span>
+    <span class="small">Mostrar só status</span>
   </label>
 
   <main>
     <!-- Esquerda -->
     <section class="card" style="height: fit-content; align-self: start;">
-      <!-- Acordeão sem JS: você ainda vê a esquerda em modo “não-compacto”, mas pode recolher -->
+      <!-- Acordeão nativo (sem JS) -->
       <details open>
         <summary>
           <h2 style="display:inline">1) Carregar planilha</h2>
@@ -179,7 +179,6 @@
     </section>
   </main>
 
-  <!-- SEU SCRIPT (inalterado) -->
   <script>
     // Estado
     const state = {
@@ -380,7 +379,7 @@
 
     // Torn API
     async function fetchTornUser(id, key) {
-      const url = `https://api.torn.com/user/${encodeURIComponent(id)}?selections=profile,basic&key=${encodeURIComponent(key)}`;
+      const url = `https://api.torn.com/user/${encodeURIComponent(id)}?selections=basic&key=${encodeURIComponent(key)}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`Falha ao consultar ${id}: HTTP ${res.status}`);
       const data = await res.json();
@@ -475,7 +474,10 @@
       if (!key) { alert('Cole sua chave da API Torn.'); return; }
       const ids = [...state.selectedIds];
       if (ids.length === 0) { alert('Selecione ao menos um perfil.'); return; }
-      results.innerHTML=''; statusMessage.textContent = `Buscando ${ids.length} usuário(s)...`;
+      results.innerHTML='';
+      statusMessage.textContent = `Buscando ${ids.length} usuário(s)...`;
+      statusMessage.classList.add('is-loading');   // <- spinner LIGADO
+
       try {
         for (const id of ids) {
           const player = state.profiles.find(p => p.id === id) || { id, name: '', total: 0 };
@@ -490,7 +492,10 @@
             results.appendChild(errCard);
           }
         }
-      } finally { statusMessage.textContent = 'Concluído.'; }
+      } finally {
+        statusMessage.textContent = 'Concluído.';
+        statusMessage.classList.remove('is-loading'); // <- spinner DESLIGADO
+      }
     });
 
     // Busca + Ordenação
