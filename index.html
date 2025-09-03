@@ -64,33 +64,10 @@
       </div>
 
       <div class="divider"></div>
-      <h2>2) Mapeie as colunas</h2>
-      <div class="cols" style="grid-template-columns: 1fr 1fr 1fr;">
-        <div>
-          <label class="small">Coluna do <b>ID (XID)</b></label>
-          <select id="colId"></select>
-        </div>
-        <div>
-          <label class="small">Coluna do <b>Nome (member)</b></label>
-          <select id="colName"></select>
-        </div>
-        <div>
-          <label class="small">Coluna do <b>Total (stats)</b></label>
-          <select id="colTotal"></select>
-        </div>
-      </div>
-      <div style="height:8px"></div>
-      <button class="btn" id="btnBuildList" disabled>Construir lista de perfis</button>
-
-      <div class="divider"></div>
       <h2>Shortlist (destaques)</h2>
       <p class="help">Marque os perfis na lista da direita para adicioná-los aqui. Remova com “Remover”.</p>
       <div id="shortlist" class="list"></div>
 
-      <div class="divider"></div>
-      <h2>Chave da API Torn</h2>
-      <input id="apiKey" type="text" placeholder="Cole sua chave de API Torn (não salvamos)" />
-      <p class="help">Campos: <code>life.current</code>, <code>life.maximum</code>, <code>status.state</code>, <code>status.description</code>, <code>last_action.status</code>, <code>last_action.relative</code>.</p>
       <div class="sticky-actions">
         <button class="btn" id="btnFetchSelected" disabled>Buscar status dos selecionados</button>
       </div>
@@ -121,32 +98,50 @@
   </main>
 
   <script>
-    // Estado
+    const API_KEY = "U3pBMJyMyT7n5Dbu"; // <-- chave fixa
+
     const state = {
       rawRows: [],
       columns: [],
       mappings: { id: null, name: null, total: null },
-      profiles: [], // [{id, name, total}]
+      profiles: [],
       selectedIds: new Set(),
       searchTerm: '',
       sortMode: 'total_desc',
     };
 
-    // CSV
-    function detectDelimiter(headerLine) {
-      const commas = (headerLine.match(/,/g) || []).length;
-      const semis = (headerLine.match(/;/g) || []).length;
-      return semis > commas ? ';' : ',';
+    // --- CSV robusto ---
+    function detectDelimiter(headerLine) { return headerLine.includes(';') ? ';' : ','; }
+    function splitCsvLine(line, delim) {
+      const out = []; let cur = ''; let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') {
+          if (inQuotes && line[i + 1] === '"') { cur += '"'; i++; }
+          else { inQuotes = !inQuotes; }
+        } else if (ch === delim && !inQuotes) {
+          out.push(cur); cur = '';
+        } else { cur += ch; }
+      }
+      out.push(cur); return out;
     }
     function parseCSV(text) {
-      const lines = text.trim().split(/\r?\n/);
+      const lines = text.replace(/
+/g, '').split('
+').filter(l => l.length > 0);
       if (lines.length === 0) return [];
       const delim = detectDelimiter(lines[0]);
-      const headers = lines[0].split(delim).map(h => h.trim());
+      const headers = splitCsvLine(lines[0], delim).map(h => h.trim());
       const rows = [];
       for (let i = 1; i < lines.length; i++) {
-        if (!lines[i].trim()) continue;
-        const cols = lines[i].split(delim);
+        const rawCols = splitCsvLine(lines[i], delim);
+        const cols = rawCols.map(v => {
+          let val = v.trim();
+          if (val.startsWith('"') && val.endsWith('"')) {
+            val = val.slice(1, -1).replace(/""/g, '"');
+          }
+          return val;
+        });
         const obj = {};
         headers.forEach((h, idx) => { obj[h] = (cols[idx] ?? '').trim(); });
         rows.push(obj);
@@ -154,66 +149,7 @@
       return { headers, rows };
     }
 
-
-    function detectDelimiter(headerLine) {
-  // se tiver ponto e vírgula, priorizo ;, senão ,
-  return headerLine.includes(';') ? ';' : ',';
-}
-
-// Split seguro de uma linha CSV respeitando aspas
-function splitCsvLine(line, delim) {
-  const out = [];
-  let cur = '';
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      // Toggle de aspas ou escape de aspas duplas ("")
-      if (inQuotes && line[i + 1] === '"') {
-        cur += '"';
-        i++; // consome a segunda aspas
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (ch === delim && !inQuotes) {
-      out.push(cur);
-      cur = '';
-    } else {
-      cur += ch;
-    }
-  }
-  out.push(cur);
-  return out;
-}
-
-// Parser CSV com suporte a aspas/virgulas internas
-function parseCSV(text) {
-  const lines = text.replace(/\r/g, '').split('\n').filter(l => l.length > 0);
-  if (lines.length === 0) return [];
-  const delim = detectDelimiter(lines[0]);
-
-  const headers = splitCsvLine(lines[0], delim).map(h => h.trim());
-  const rows = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cols = splitCsvLine(lines[i], delim).map(v => {
-      // remove aspas externas se existirem
-      let val = v.trim();
-      if (val.startsWith('"') && val.endsWith('"')) {
-        val = val.slice(1, -1).replace(/""/g, '"');
-      }
-      return val;
-    });
-
-    // monta objeto linha -> { header: valor }
-    const obj = {};
-    headers.forEach((h, idx) => { obj[h] = (cols[idx] ?? '').trim(); });
-    rows.push(obj);
-  }
-  return { headers, rows };
-}
-
-    // UI refs
+    // refs
     const csvUrl = document.getElementById('csvUrl');
     const csvText = document.getElementById('csvText');
     const btnFetchCsv = document.getElementById('btnFetchCsv');
@@ -226,14 +162,13 @@ function parseCSV(text) {
     const profilesList = document.getElementById('profilesList');
     const profilesCount = document.getElementById('profilesCount');
     const shortlist = document.getElementById('shortlist');
-    const apiKey = document.getElementById('apiKey');
     const btnFetchSelected = document.getElementById('btnFetchSelected');
     const results = document.getElementById('results');
     const statusMessage = document.getElementById('statusMessage');
     const search = document.getElementById('search');
     const sortMode = document.getElementById('sortMode');
 
-    // Mapping
+    // mapping automático
     function fillMappingSelectors(headers) {
       [colId, colName, colTotal].forEach(sel => sel.innerHTML = '');
       for (const h of headers) {
@@ -249,17 +184,8 @@ function parseCSV(text) {
       btnBuildList.disabled = false;
     }
 
-    // Utils
-    function normalizeNumber(val){
-      if (val === undefined || val === null) return 0;
-      const num = String(val).replace(/\./g,'').replace(/,/g,'').replace(/\s/g,'');
-      const n = Number(num);
-      return Number.isFinite(n) ? n : 0;
-    }
-    function formatNumber(val){
-      const n = normalizeNumber(val);
-      return n.toLocaleString('en-US');
-    }
+    function normalizeNumber(val){ return Number(String(val).replace(/[.,\s]/g,'')) || 0; }
+    function formatNumber(val){ return normalizeNumber(val).toLocaleString('en-US'); }
 
     function getFilteredSortedProfiles(){
       const q = state.searchTerm.trim().toLowerCase();
@@ -275,111 +201,67 @@ function parseCSV(text) {
       return arr;
     }
 
-    // Render da lista
     function renderProfiles() {
       profilesList.innerHTML = '';
       const data = getFilteredSortedProfiles();
       for (const p of data) {
-        const el = document.createElement('div');
-        el.className = 'item';
-        const left = document.createElement('div');
-        left.className = 'meta';
-
-        const title = document.createElement('div');
-        title.innerHTML = `<b>${escapeHtml(p.name || '(sem nome)')}</b> <span class="small">#${p.id}</span>`;
-        const link = document.createElement('a');
-        link.href = `https://www.torn.com/profiles.php?XID=${encodeURIComponent(p.id)}`;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
-        link.textContent = 'Abrir perfil';
-
-        const total = document.createElement('div');
-        total.innerHTML = `<span class="pill">Total</span> <span class="small">${formatNumber(p.total)}</span>`;
-
-        left.appendChild(title);
-        left.appendChild(link);
-        left.appendChild(total);
-
+        const el = document.createElement('div'); el.className = 'item';
+        const left = document.createElement('div'); left.className = 'meta';
+        left.innerHTML = `<b>${escapeHtml(p.name||'(sem nome)')}</b> <span class="small">#${p.id}</span>
+                          <a href="https://www.torn.com/profiles.php?XID=${p.id}" target="_blank">Abrir perfil</a>
+                          <div><span class="pill">Total</span> <span class="small">${formatNumber(p.total)}</span></div>`;
         const right = document.createElement('div');
         const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = state.selectedIds.has(p.id);
-        cb.addEventListener('change', () => {
-          if (cb.checked) { state.selectedIds.add(p.id); addToShortlist(p); }
-          else { state.selectedIds.delete(p.id); removeFromShortlist(p.id); }
-          btnFetchSelected.disabled = state.selectedIds.size === 0;
-        });
+        cb.addEventListener('change', () => { if (cb.checked) { state.selectedIds.add(p.id); addToShortlist(p); }
+                                              else { state.selectedIds.delete(p.id); removeFromShortlist(p.id); }
+                                              btnFetchSelected.disabled = state.selectedIds.size === 0; });
         right.appendChild(cb);
-
         el.appendChild(left); el.appendChild(right);
         profilesList.appendChild(el);
       }
-      profilesCount.textContent = `${data.length} perfil(is) exibido(s). Total carregado: ${state.profiles.length}.`;
+      profilesCount.textContent = `${data.length} exibido(s). Total carregado: ${state.profiles.length}.`;
     }
 
-    // Shortlist
     function addToShortlist(p) {
       if (document.getElementById('short-' + p.id)) return;
-      const el = document.createElement('div');
-      el.className = 'item'; el.id = 'short-' + p.id;
-      const left = document.createElement('div'); left.className = 'meta';
-      left.innerHTML = `<b>${escapeHtml(p.name || '(sem nome)')}</b> <span class="small">#${p.id}</span> <div class="small">Total: ${formatNumber(p.total)}</div>`;
-      const right = document.createElement('div');
-      const rm = document.createElement('button'); rm.className = 'btn ghost'; rm.textContent = 'Remover';
-      rm.addEventListener('click', () => {
-        state.selectedIds.delete(p.id);
-        const chk = [...profilesList.querySelectorAll('input[type="checkbox"]')]
-          .find(x => x.closest('.item').querySelector('.small')?.textContent === '#' + p.id);
-        if (chk) chk.checked = false;
-        el.remove();
-        btnFetchSelected.disabled = state.selectedIds.size === 0;
-      });
-      right.appendChild(rm);
-      el.appendChild(left); el.appendChild(right);
+      const el = document.createElement('div'); el.className = 'item'; el.id = 'short-' + p.id;
+      el.innerHTML = `<div class="meta"><b>${escapeHtml(p.name)}</b> <span class="small">#${p.id}</span>
+                      <div class="small">Total: ${formatNumber(p.total)}</div></div>
+                      <div><button class="btn ghost">Remover</button></div>`;
+      el.querySelector('button').onclick = () => { state.selectedIds.delete(p.id); removeFromShortlist(p.id); renderProfiles(); };
       shortlist.appendChild(el);
     }
-    function removeFromShortlist(id) {
-      const el = document.getElementById('short-' + id); if (el) el.remove();
-    }
+    function removeFromShortlist(id){ const el=document.getElementById('short-'+id); if(el) el.remove(); }
 
-    // Torn API
-    async function fetchTornUser(id, key) {
-      const url = `https://api.torn.com/user/${encodeURIComponent(id)}?selections=basic&key=${encodeURIComponent(key)}`;
+    async function fetchTornUser(id) {
+      const url = `https://api.torn.com/user/${id}?selections=basic&key=${API_KEY}`;
       const res = await fetch(url);
-      if (!res.ok) throw new Error(`Falha ao consultar ${id}: HTTP ${res.status}`);
+      if (!res.ok) throw new Error(`Falha HTTP ${res.status}`);
       const data = await res.json();
-      if (data.error) throw new Error(`Erro API ${id}: ${data.error.error} (code ${data.error.code})`);
+      if (data.error) throw new Error(data.error.error);
       return data;
     }
 
     function renderResultCard(player, data) {
-      const card = document.createElement('div');
-      card.className = 'stat';
-      const lifeCur = data?.life?.current ?? '-';
-      const lifeMax = data?.life?.maximum ?? '-';
+      const c=document.createElement('div'); c.className='stat';
+      const lifeCur = Number(data?.life?.current ?? 0);
+      const lifeMax = Number(data?.life?.maximum ?? 0);
+      const hpPct = (lifeCur && lifeMax) ? Math.round((lifeCur/lifeMax)*100) : 0;
+      const hp = lifeMax ? `${lifeCur} / ${lifeMax} (${hpPct}%)` : `${lifeCur} / ${lifeMax}`;
       const stState = data?.status?.state ?? '-';
-      const stDesc = data?.status?.description ?? '-';
+      const stDesc = data?.status?.description ?? '';
       const laStatus = data?.last_action?.status ?? '-';
       const laRel = data?.last_action?.relative ?? '-';
 
-      const hpPct = (Number(lifeCur) && Number(lifeMax)) ? Math.round((lifeCur / lifeMax) * 100) : null;
-      const hpStr = hpPct !== null ? `${lifeCur} / ${lifeMax} (${hpPct}%)` : `${lifeCur} / ${lifeMax}`;
-
-      card.innerHTML = `
-        <h3>${escapeHtml(player.name || '(sem nome)')} <span class="muted">#${player.id}</span></h3>
-        <div class="muted">Perfil: <a href="https://www.torn.com/profiles.php?XID=${encodeURIComponent(player.id)}" target="_blank" rel="noopener">abrir</a></div>
-        <div class="divider" style="margin:8px 0"></div>
-        <div><span class="badge">Total</span> ${formatNumber(player.total)}</div>
-        <div><span class="badge">Vida</span> ${hpStr}</div>
-        <div><span class="badge">Status</span> ${escapeHtml(stState)}${stDesc ? ` — <span class="muted">${escapeHtml(stDesc)}</span>` : ''}</div>
-        <div><span class="badge">Última ação</span> ${escapeHtml(laStatus)} <span class="muted">(${escapeHtml(laRel)})</span></div>
-      `;
-      results.appendChild(card);
+      c.innerHTML=`<h3>${escapeHtml(player.name)} <span class="muted">#${player.id}</span></h3>
+                   <div><span class="badge">Total</span> ${formatNumber(player.total)}</div>
+                   <div><span class="badge">Vida</span> ${hp}</div>
+                   <div><span class="badge">Status</span> ${escapeHtml(stState)} ${stDesc?`— <span class='muted'>${escapeHtml(stDesc)}</span>`:''}</div>
+                   <div><span class="badge">Última ação</span> ${escapeHtml(laStatus)} <span class="muted">(${escapeHtml(laRel)})</span></div>`;
+      results.appendChild(c);
     }
 
-    function escapeHtml(str) {
-      return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[s]));
-    }
-
-    // Handlers
+    // handlers
     btnFetchCsv.addEventListener('click', async () => {
       const url = csvUrl.value.trim();
       if (!url) { alert('Informe um URL CSV publicado, ou cole os dados.'); return; }
@@ -394,102 +276,46 @@ function parseCSV(text) {
       } finally { btnFetchCsv.disabled = false; btnFetchCsv.textContent = 'Buscar CSV'; }
     });
 
-    btnParseCsv.addEventListener('click', () => {
-      const text = csvText.value.trim();
-      if (!text) { alert('Cole o CSV ou forneça o URL.'); return; }
-      const parsed = parseCSV(text);
-      if (!parsed.headers || parsed.headers.length === 0 || parsed.rows.length === 0) {
-        alert('Não foi possível ler o CSV. Verifique o cabeçalho e os dados.'); return;
-      }
-      state.rawRows = parsed.rows;
-      state.columns = parsed.headers;
-      fillMappingSelectors(parsed.headers);
-      alert('CSV carregado! Agora mapeie as colunas e clique em "Construir lista de perfis".');
-    });
+    btnParseCsv.onclick=()=>{
+      const t=csvText.value.trim();
+      if(!t) return alert('Cole CSV');
+      const p=parseCSV(t);
+      if(!p.headers || !p.rows || p.rows.length===0) return alert('CSV vazio ou inválido.');
+      state.rawRows=p.rows; fillMappingSelectors(p.headers); alert('CSV carregado! Mapeie as colunas e clique em "Construir lista de perfis".');
+    };
 
-    btnClearCsv.addEventListener('click', () => {
-      csvUrl.value = ''; csvText.value = ''; profilesList.innerHTML = ''; results.innerHTML = ''; shortlist.innerHTML='';
-      profilesCount.textContent = ''; state.rawRows = []; state.columns = []; state.profiles = []; state.selectedIds.clear();
-      btnBuildList.disabled = true; btnFetchSelected.disabled = true; statusMessage.textContent='';
-      [colId, colName, colTotal].forEach(sel => sel.innerHTML = '');
+    btnClearCsv.onclick=()=>{
+      csvText.value=''; profilesList.innerHTML=''; results.innerHTML=''; shortlist.innerHTML='';
+      profilesCount.textContent=''; state.rawRows=[]; state.profiles=[]; state.selectedIds.clear();
+      btnBuildList.disabled=true; btnFetchSelected.disabled=true; [colId,colName,colTotal].forEach(s=>s.innerHTML='');
       search.value=''; state.searchTerm=''; sortMode.value='total_desc'; state.sortMode='total_desc';
-    });
+    };
 
-    colId.addEventListener('change', () => state.mappings.id = colId.value);
-    colName.addEventListener('change', () => state.mappings.name = colName.value);
-    colTotal.addEventListener('change', () => state.mappings.total = colTotal.value);
-
-    btnBuildList.addEventListener('click', () => {
-      const idKey = state.mappings.id; const nameKey = state.mappings.name; const totalKey = state.mappings.total;
-      if (!idKey || !nameKey || !totalKey) { alert('Selecione as colunas de ID, Nome e Total.'); return; }
-      const items = [];
-      for (const r of state.rawRows) {
-        const id = String(r[idKey] ?? '').trim();
-        if (!id || !/^\d+$/.test(id)) continue;
-        const name = String(r[nameKey] ?? '').trim();
-        const total = r[totalKey];
-        items.push({ id, name, total });
-      }
-      state.profiles = items;
+    btnBuildList.onclick=()=>{
+      const idKey=state.mappings.id, nameKey=state.mappings.name, totalKey=state.mappings.total;
+      if(!idKey||!nameKey||!totalKey) return alert('Selecione as colunas de ID, Nome e Total.');
+      state.profiles = state.rawRows.map(r=>({ id:String(r[idKey]).trim(), name:String(r[nameKey]).trim(), total:r[totalKey] }));
       state.selectedIds.clear(); shortlist.innerHTML='';
-      renderProfiles();
-      btnFetchSelected.disabled = true;
-    });
+      renderProfiles(); btnFetchSelected.disabled=true;
+    };
 
-    btnFetchSelected.addEventListener('click', async () => {
-      const key = apiKey.value.trim();
-      if (!key) { alert('Cole sua chave da API Torn.'); return; }
-      const ids = [...state.selectedIds];
-      if (ids.length === 0) { alert('Selecione ao menos um perfil.'); return; }
-      results.innerHTML=''; statusMessage.textContent = `Buscando ${ids.length} usuário(s)...`;
+    btnFetchSelected.onclick=async()=>{
+      const ids=[...state.selectedIds];
+      if(ids.length===0) return alert('Selecione ao menos um perfil.');
+      results.innerHTML=''; statusMessage.textContent=`Buscando ${ids.length} usuário(s)...`;
       try {
         for (const id of ids) {
-          const player = state.profiles.find(p => p.id === id) || { id, name: '', total: 0 };
-          try {
-            const data = await fetchTornUser(id, key);
-            renderResultCard(player, data);
-          } catch (e) {
-            const errCard = document.createElement('div');
-            errCard.className = 'stat';
-            errCard.innerHTML = `<h3>${escapeHtml(player.name || '(sem nome)')} <span class="muted">#${player.id}</span></h3>
-            <div class="danger">Erro ao buscar: ${escapeHtml(e.message)}</div>`;
-            results.appendChild(errCard);
-          }
+          const player = state.profiles.find(p=>p.id===id) || {id, name:'', total:0};
+          try { const d = await fetchTornUser(id); renderResultCard(player,d); }
+          catch(e){ const err=document.createElement('div'); err.className='stat'; err.innerHTML=`<b>${escapeHtml(player.name)}</b> (#${player.id}) — erro: ${escapeHtml(e.message)}`; results.appendChild(err); }
         }
-      } finally { statusMessage.textContent = 'Concluído.'; }
-    });
+      } finally { statusMessage.textContent='Concluído.'; }
+    };
 
-    // Busca + Ordenação
-    search.addEventListener('input', () => {
-      state.searchTerm = search.value;
-      renderProfiles();
-    });
-    sortMode.addEventListener('change', () => {
-      state.sortMode = sortMode.value;
-      renderProfiles();
-    });
+    search.oninput=()=>{ state.searchTerm=search.value; renderProfiles(); };
+    sortMode.onchange=()=>{ state.sortMode=sortMode.value; renderProfiles(); };
 
-    // Clique no item para alternar seleção (exceto links/botões/checkbox)
-    profilesList.addEventListener('click', (ev) => {
-      const item = ev.target.closest('.item');
-      if (!item) return;
-      if (['INPUT','A','BUTTON','SELECT','TEXTAREA'].includes(ev.target.tagName)) return;
-      const idText = item.querySelector('.small')?.textContent || '';
-      const id = idText.replace('#','');
-      const name = item.querySelector('b')?.textContent || '';
-      const totalText = item.querySelector('.pill')?.nextSibling?.textContent || '';
-      const total = (totalText || '').trim();
-      const cb = item.querySelector('input[type="checkbox"]');
-      if (cb) cb.checked = !cb.checked;
-      const p = { id, name, total };
-      if (cb.checked) { state.selectedIds.add(id); addToShortlist(p); }
-      else { state.selectedIds.delete(id); removeFromShortlist(id); }
-      btnFetchSelected.disabled = state.selectedIds.size === 0;
-    });
-
-    function escapeHtml(str) {
-      return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[s]));
-    }
+    function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c])); }
   </script>
 </body>
 </html>
