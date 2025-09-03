@@ -31,7 +31,6 @@
     .muted { color:#9aa7b4; font-size:12px; }
     .badge { display:inline-block; padding:2px 8px; border-radius:8px; font-size:12px; border:1px solid #263241; }
     .danger { color:#ffb4b4; }
-    .success { color:#a6f4c5; }
     .sticky-actions { position: sticky; bottom: 0; background: linear-gradient(180deg, rgba(15,23,32,0), #0f1720 40%); padding-top: 12px; }
     a { color:#6ab7ff; text-decoration: none; }
     a:hover { text-decoration: underline; }
@@ -39,6 +38,7 @@
     .help { font-size: 12px; color:#8aa0b5; }
     .divider { height: 1px; background:#1f2a37; margin: 8px 0; }
     .loading { font-size: 12px; color: #c7d1db; }
+    .toolbar { display:grid; grid-template-columns: 1fr 180px; gap:8px; margin-bottom:8px; }
   </style>
 </head>
 <body>
@@ -47,16 +47,16 @@
   </header>
 
   <main>
-    <!-- Lado Esquerdo: Import + Mapeamento + Shortlist -->
+    <!-- Esquerda -->
     <section class="card" style="height: fit-content; align-self: start;">
       <h2>1) Carregar planilha</h2>
-      <p class="small">Use um <b>link CSV publicado</b> do Google Sheets (<i>Arquivo → Compartilhar → Publicar na web → CSV</i>) <br>ou cole os dados CSV abaixo.</p>
+      <p class="small">Use um <b>link CSV publicado</b> do Google Sheets (<i>Arquivo → Compartilhar → Publicar na web → CSV</i>) ou cole os dados abaixo.</p>
       <div class="row">
         <input id="csvUrl" type="text" placeholder="URL CSV publicado do Google Sheets (opcional)" />
         <button class="btn" id="btnFetchCsv">Buscar CSV</button>
       </div>
       <div style="height:8px"></div>
-      <textarea id="csvText" placeholder="Cole aqui o conteúdo CSV (com cabeçalhos). Ex.:\nXID,Nome\n12345,Fulano\n67890,Ciclano"></textarea>
+      <textarea id="csvText" placeholder="Cabeçalhos esperados: id,member,total&#10;Ex.:&#10;id,member,total&#10;12345,Fulano,123456789&#10;67890,Ciclano,987654321"></textarea>
       <div style="height:8px"></div>
       <div class="row">
         <button class="btn" id="btnParseCsv">Ler CSV</button>
@@ -65,14 +65,18 @@
 
       <div class="divider"></div>
       <h2>2) Mapeie as colunas</h2>
-      <div class="cols">
+      <div class="cols" style="grid-template-columns: 1fr 1fr 1fr;">
         <div>
           <label class="small">Coluna do <b>ID (XID)</b></label>
           <select id="colId"></select>
         </div>
         <div>
-          <label class="small">Coluna do <b>Nome</b></label>
+          <label class="small">Coluna do <b>Nome (member)</b></label>
           <select id="colName"></select>
+        </div>
+        <div>
+          <label class="small">Coluna do <b>Total (stats)</b></label>
+          <select id="colTotal"></select>
         </div>
       </div>
       <div style="height:8px"></div>
@@ -80,21 +84,32 @@
 
       <div class="divider"></div>
       <h2>Shortlist (destaques)</h2>
-      <p class="help">Marque os perfis na lista da direita para adicioná-los aqui. Você pode remover clicando no X.</p>
+      <p class="help">Marque os perfis na lista da direita para adicioná-los aqui. Remova com “Remover”.</p>
       <div id="shortlist" class="list"></div>
 
       <div class="divider"></div>
       <h2>Chave da API Torn</h2>
       <input id="apiKey" type="text" placeholder="Cole sua chave de API Torn (não salvamos)" />
-      <p class="help">Campos consultados: <code>life.current</code>, <code>life.maximum</code>, <code>status.state</code>, <code>status.description</code>, <code>last_action.status</code>, <code>last_action.relative</code>.</p>
+      <p class="help">Campos: <code>life.current</code>, <code>life.maximum</code>, <code>status.state</code>, <code>status.description</code>, <code>last_action.status</code>, <code>last_action.relative</code>.</p>
       <div class="sticky-actions">
         <button class="btn" id="btnFetchSelected" disabled>Buscar status dos selecionados</button>
       </div>
     </section>
 
-    <!-- Lado Direito: Lista de Perfis + Resultados -->
+    <!-- Direita -->
     <section class="card">
       <h2>Perfis da planilha</h2>
+
+      <div class="toolbar">
+        <input id="search" type="text" placeholder="Pesquisar por nome ou #id..." />
+        <select id="sortMode">
+          <option value="total_desc">Ordenar: Total ↓</option>
+          <option value="total_asc">Ordenar: Total ↑</option>
+          <option value="name_asc">Ordenar: Nome A → Z</option>
+          <option value="name_desc">Ordenar: Nome Z → A</option>
+        </select>
+      </div>
+
       <div id="profilesList" class="list" style="min-height: 120px;"></div>
       <p class="small" id="profilesCount"></p>
 
@@ -106,23 +121,23 @@
   </main>
 
   <script>
-    // Estado em memória
+    // Estado
     const state = {
-      rawRows: [], // linhas brutas do CSV (objetos por cabeçalho)
+      rawRows: [],
       columns: [],
-      mappings: { id: null, name: null },
-      profiles: [], // [{id, name}]
+      mappings: { id: null, name: null, total: null },
+      profiles: [], // [{id, name, total}]
       selectedIds: new Set(),
+      searchTerm: '',
+      sortMode: 'total_desc',
     };
 
-    // Util: detectar delimitador simples (vírgula ou ponto e vírgula)
+    // CSV
     function detectDelimiter(headerLine) {
       const commas = (headerLine.match(/,/g) || []).length;
       const semis = (headerLine.match(/;/g) || []).length;
       return semis > commas ? ';' : ',';
     }
-
-    // Parser CSV simples (sem aspas complexas)
     function parseCSV(text) {
       const lines = text.trim().split(/\r?\n/);
       if (lines.length === 0) return [];
@@ -147,6 +162,7 @@
     const btnClearCsv = document.getElementById('btnClearCsv');
     const colId = document.getElementById('colId');
     const colName = document.getElementById('colName');
+    const colTotal = document.getElementById('colTotal');
     const btnBuildList = document.getElementById('btnBuildList');
     const profilesList = document.getElementById('profilesList');
     const profilesCount = document.getElementById('profilesCount');
@@ -155,26 +171,56 @@
     const btnFetchSelected = document.getElementById('btnFetchSelected');
     const results = document.getElementById('results');
     const statusMessage = document.getElementById('statusMessage');
+    const search = document.getElementById('search');
+    const sortMode = document.getElementById('sortMode');
 
-    // Preenche selects de mapeamento
+    // Mapping
     function fillMappingSelectors(headers) {
-      colId.innerHTML = ''; colName.innerHTML = '';
+      [colId, colName, colTotal].forEach(sel => sel.innerHTML = '');
       for (const h of headers) {
-        const o1 = document.createElement('option'); o1.value = h; o1.textContent = h; colId.appendChild(o1.cloneNode(true));
-        const o2 = document.createElement('option'); o2.value = h; o2.textContent = h; colName.appendChild(o2);
+        for (const sel of [colId, colName, colTotal]) {
+          const o = document.createElement('option'); o.value = h; o.textContent = h; sel.appendChild(o);
+        }
       }
-      // Tentativa de detecção automática
-      const idGuess = headers.find(h => /^(xid|id|player_id|userid|user_id)$/i.test(h)) || headers[0];
-      const nameGuess = headers.find(h => /^(name|nome|player|username|user|nick)$/i.test(h)) || headers[1] || headers[0];
-      colId.value = idGuess; colName.value = nameGuess;
-      state.mappings.id = idGuess; state.mappings.name = nameGuess;
+      const idGuess = headers.find(h => /^(id|xid|player_id|userid|user_id)$/i.test(h)) || headers[0];
+      const nameGuess = headers.find(h => /^(member|name|nome|player|username|user|nick)$/i.test(h)) || headers[1] || headers[0];
+      const totalGuess = headers.find(h => /^(total|stats|total_stats)$/i.test(h)) || headers[2] || headers[0];
+      colId.value = idGuess; colName.value = nameGuess; colTotal.value = totalGuess;
+      state.mappings.id = idGuess; state.mappings.name = nameGuess; state.mappings.total = totalGuess;
       btnBuildList.disabled = false;
     }
 
-    // Renderização da lista principal de perfis
+    // Utils
+    function normalizeNumber(val){
+      if (val === undefined || val === null) return 0;
+      const num = String(val).replace(/\./g,'').replace(/,/g,'').replace(/\s/g,'');
+      const n = Number(num);
+      return Number.isFinite(n) ? n : 0;
+    }
+    function formatNumber(val){
+      const n = normalizeNumber(val);
+      return n.toLocaleString('en-US');
+    }
+
+    function getFilteredSortedProfiles(){
+      const q = state.searchTerm.trim().toLowerCase();
+      let arr = [...state.profiles];
+      if (q) arr = arr.filter(p => (p.name||'').toLowerCase().includes(q) || String(p.id).includes(q));
+      switch(state.sortMode){
+        case 'total_asc':  arr.sort((a,b)=> normalizeNumber(a.total) - normalizeNumber(b.total)); break;
+        case 'name_asc':   arr.sort((a,b)=> (a.name||'').localeCompare(b.name||'')); break;
+        case 'name_desc':  arr.sort((a,b)=> (b.name||'').localeCompare(a.name||'')); break;
+        case 'total_desc':
+        default:           arr.sort((a,b)=> normalizeNumber(b.total) - normalizeNumber(a.total));
+      }
+      return arr;
+    }
+
+    // Render da lista
     function renderProfiles() {
       profilesList.innerHTML = '';
-      for (const p of state.profiles) {
+      const data = getFilteredSortedProfiles();
+      for (const p of data) {
         const el = document.createElement('div');
         el.className = 'item';
         const left = document.createElement('div');
@@ -188,7 +234,12 @@
         link.rel = 'noopener noreferrer';
         link.textContent = 'Abrir perfil';
 
-        left.appendChild(title); left.appendChild(link);
+        const total = document.createElement('div');
+        total.innerHTML = `<span class="pill">Total</span> <span class="small">${formatNumber(p.total)}</span>`;
+
+        left.appendChild(title);
+        left.appendChild(link);
+        left.appendChild(total);
 
         const right = document.createElement('div');
         const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = state.selectedIds.has(p.id);
@@ -202,16 +253,16 @@
         el.appendChild(left); el.appendChild(right);
         profilesList.appendChild(el);
       }
-      profilesCount.textContent = `${state.profiles.length} perfil(is) carregado(s).`;
+      profilesCount.textContent = `${data.length} perfil(is) exibido(s). Total carregado: ${state.profiles.length}.`;
     }
 
-    // Shortlist UI
+    // Shortlist
     function addToShortlist(p) {
-      if (document.getElementById('short-' + p.id)) return; // já existe
+      if (document.getElementById('short-' + p.id)) return;
       const el = document.createElement('div');
       el.className = 'item'; el.id = 'short-' + p.id;
       const left = document.createElement('div'); left.className = 'meta';
-      left.innerHTML = `<b>${escapeHtml(p.name || '(sem nome)')}</b> <span class="small">#${p.id}</span>`;
+      left.innerHTML = `<b>${escapeHtml(p.name || '(sem nome)')}</b> <span class="small">#${p.id}</span> <div class="small">Total: ${formatNumber(p.total)}</div>`;
       const right = document.createElement('div');
       const rm = document.createElement('button'); rm.className = 'btn ghost'; rm.textContent = 'Remover';
       rm.addEventListener('click', () => {
@@ -232,7 +283,6 @@
 
     // Torn API
     async function fetchTornUser(id, key) {
-      // selections "basic" deve trazer os campos solicitados
       const url = `https://api.torn.com/user/${encodeURIComponent(id)}?selections=basic&key=${encodeURIComponent(key)}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`Falha ao consultar ${id}: HTTP ${res.status}`);
@@ -258,6 +308,7 @@
         <h3>${escapeHtml(player.name || '(sem nome)')} <span class="muted">#${player.id}</span></h3>
         <div class="muted">Perfil: <a href="https://www.torn.com/profiles.php?XID=${encodeURIComponent(player.id)}" target="_blank" rel="noopener">abrir</a></div>
         <div class="divider" style="margin:8px 0"></div>
+        <div><span class="badge">Total</span> ${formatNumber(player.total)}</div>
         <div><span class="badge">Vida</span> ${hpStr}</div>
         <div><span class="badge">Status</span> ${escapeHtml(stState)}${stDesc ? ` — <span class="muted">${escapeHtml(stDesc)}</span>` : ''}</div>
         <div><span class="badge">Última ação</span> ${escapeHtml(laStatus)} <span class="muted">(${escapeHtml(laRel)})</span></div>
@@ -272,7 +323,7 @@
     // Handlers
     btnFetchCsv.addEventListener('click', async () => {
       const url = csvUrl.value.trim();
-      if (!url) { alert('Informe um URL CSV publicado, ou cole os dados no campo de texto.'); return; }
+      if (!url) { alert('Informe um URL CSV publicado, ou cole os dados.'); return; }
       btnFetchCsv.disabled = true; btnFetchCsv.textContent = 'Baixando...';
       try {
         const res = await fetch(url);
@@ -301,21 +352,24 @@
       csvUrl.value = ''; csvText.value = ''; profilesList.innerHTML = ''; results.innerHTML = ''; shortlist.innerHTML='';
       profilesCount.textContent = ''; state.rawRows = []; state.columns = []; state.profiles = []; state.selectedIds.clear();
       btnBuildList.disabled = true; btnFetchSelected.disabled = true; statusMessage.textContent='';
-      colId.innerHTML = ''; colName.innerHTML = '';
+      [colId, colName, colTotal].forEach(sel => sel.innerHTML = '');
+      search.value=''; state.searchTerm=''; sortMode.value='total_desc'; state.sortMode='total_desc';
     });
 
     colId.addEventListener('change', () => state.mappings.id = colId.value);
     colName.addEventListener('change', () => state.mappings.name = colName.value);
+    colTotal.addEventListener('change', () => state.mappings.total = colTotal.value);
 
     btnBuildList.addEventListener('click', () => {
-      const idKey = state.mappings.id; const nameKey = state.mappings.name;
-      if (!idKey) { alert('Selecione a coluna de ID (XID).'); return; }
+      const idKey = state.mappings.id; const nameKey = state.mappings.name; const totalKey = state.mappings.total;
+      if (!idKey || !nameKey || !totalKey) { alert('Selecione as colunas de ID, Nome e Total.'); return; }
       const items = [];
       for (const r of state.rawRows) {
         const id = String(r[idKey] ?? '').trim();
-        if (!id || !/^\d+$/.test(id)) continue; // apenas números
+        if (!id || !/^\d+$/.test(id)) continue;
         const name = String(r[nameKey] ?? '').trim();
-        items.push({ id, name });
+        const total = r[totalKey];
+        items.push({ id, name, total });
       }
       state.profiles = items;
       state.selectedIds.clear(); shortlist.innerHTML='';
@@ -331,7 +385,7 @@
       results.innerHTML=''; statusMessage.textContent = `Buscando ${ids.length} usuário(s)...`;
       try {
         for (const id of ids) {
-          const player = state.profiles.find(p => p.id === id) || { id, name: '' };
+          const player = state.profiles.find(p => p.id === id) || { id, name: '', total: 0 };
           try {
             const data = await fetchTornUser(id, key);
             renderResultCard(player, data);
@@ -346,21 +400,37 @@
       } finally { statusMessage.textContent = 'Concluído.'; }
     });
 
-    // Atalho: clique na lista para adicionar/remover
+    // Busca + Ordenação
+    search.addEventListener('input', () => {
+      state.searchTerm = search.value;
+      renderProfiles();
+    });
+    sortMode.addEventListener('change', () => {
+      state.sortMode = sortMode.value;
+      renderProfiles();
+    });
+
+    // Clique no item para alternar seleção (exceto links/botões/checkbox)
     profilesList.addEventListener('click', (ev) => {
       const item = ev.target.closest('.item');
       if (!item) return;
+      if (['INPUT','A','BUTTON','SELECT','TEXTAREA'].includes(ev.target.tagName)) return;
       const idText = item.querySelector('.small')?.textContent || '';
       const id = idText.replace('#','');
       const name = item.querySelector('b')?.textContent || '';
-      // Toggle via clique no container, mas ignore se clicou diretamente no checkbox/anchor/botão
-      if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'A' || ev.target.tagName === 'BUTTON') return;
+      const totalText = item.querySelector('.pill')?.nextSibling?.textContent || '';
+      const total = (totalText || '').trim();
       const cb = item.querySelector('input[type="checkbox"]');
       if (cb) cb.checked = !cb.checked;
-      if (cb.checked) { state.selectedIds.add(id); addToShortlist({ id, name }); }
+      const p = { id, name, total };
+      if (cb.checked) { state.selectedIds.add(id); addToShortlist(p); }
       else { state.selectedIds.delete(id); removeFromShortlist(id); }
       btnFetchSelected.disabled = state.selectedIds.size === 0;
     });
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[s]));
+    }
   </script>
 </body>
 </html>
