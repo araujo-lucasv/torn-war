@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Torn – Perfis (Google Sheets → Shortlist → Status)</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 0; background:#0b0f14; color:#e6edf3; }
+    header { padding: 16px 20px; background: #0f1720; border-bottom: 1px solid #1f2a37; position: sticky; top: 0; z-index: 5; }
+    h1 { margin: 0; font-size: 18px; font-weight: 600; }
+    main { display: grid; grid-template-columns: 360px 1fr; gap: 16px; padding: 16px; }
+    .card { background: #0f1720; border: 1px solid #1f2a37; border-radius: 14px; padding: 14px; }
+    .card h2 { margin: 0 0 8px; font-size: 16px; }
+    .small { font-size: 12px; color:#9aa7b4; }
+    input[type="text"], textarea, select { width: 100%; background:#0b131a; color:#e6edf3; border:1px solid #263241; border-radius: 10px; padding:10px; outline: none; }
+    textarea { min-height: 90px; resize: vertical; }
+    .row { display:flex; gap:10px; align-items:center; }
+    .row > * { flex:1; }
+    .btn { background:#1e88e5; color:white; border:none; padding:10px 12px; border-radius:10px; cursor:pointer; font-weight:600; }
+    .btn.secondary { background:#263241; color:#c7d1db; }
+    .btn.ghost { background:transparent; border:1px solid #263241; }
+    .btn:disabled { opacity: .6; cursor:not-allowed; }
+    .list { display:flex; flex-direction: column; gap:8px; max-height: 60vh; overflow:auto; }
+    .item { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px; border:1px solid #1f2a37; border-radius:12px; background:#0b131a; }
+    .item .meta { display:flex; flex-direction:column; }
+    .pill { font-size:11px; padding:2px 8px; border:1px solid #263241; border-radius:999px; color:#a9b6c3; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:12px; }
+    .stat { background:#0b131a; border:1px solid #1f2a37; border-radius:12px; padding:10px; }
+    .stat h3 { margin:0 0 6px; font-size:14px; }
+    .muted { color:#9aa7b4; font-size:12px; }
+    .badge { display:inline-block; padding:2px 8px; border-radius:8px; font-size:12px; border:1px solid #263241; }
+    .danger { color:#ffb4b4; }
+    .success { color:#a6f4c5; }
+    .sticky-actions { position: sticky; bottom: 0; background: linear-gradient(180deg, rgba(15,23,32,0), #0f1720 40%); padding-top: 12px; }
+    a { color:#6ab7ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .cols { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+    .help { font-size: 12px; color:#8aa0b5; }
+    .divider { height: 1px; background:#1f2a37; margin: 8px 0; }
+    .loading { font-size: 12px; color: #c7d1db; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Torn – Importar Perfis da Planilha → Selecionar Destaques → Buscar Status</h1>
+  </header>
+
+  <main>
+    <!-- Lado Esquerdo: Import + Mapeamento + Shortlist -->
+    <section class="card" style="height: fit-content; align-self: start;">
+      <h2>1) Carregar planilha</h2>
+      <p class="small">Use um <b>link CSV publicado</b> do Google Sheets (<i>Arquivo → Compartilhar → Publicar na web → CSV</i>) <br>ou cole os dados CSV abaixo.</p>
+      <div class="row">
+        <input id="csvUrl" type="text" placeholder="URL CSV publicado do Google Sheets (opcional)" />
+        <button class="btn" id="btnFetchCsv">Buscar CSV</button>
+      </div>
+      <div style="height:8px"></div>
+      <textarea id="csvText" placeholder="Cole aqui o conteúdo CSV (com cabeçalhos). Ex.:\nXID,Nome\n12345,Fulano\n67890,Ciclano"></textarea>
+      <div style="height:8px"></div>
+      <div class="row">
+        <button class="btn" id="btnParseCsv">Ler CSV</button>
+        <button class="btn secondary" id="btnClearCsv">Limpar</button>
+      </div>
+
+      <div class="divider"></div>
+      <h2>2) Mapeie as colunas</h2>
+      <div class="cols">
+        <div>
+          <label class="small">Coluna do <b>ID (XID)</b></label>
+          <select id="colId"></select>
+        </div>
+        <div>
+          <label class="small">Coluna do <b>Nome</b></label>
+          <select id="colName"></select>
+        </div>
+      </div>
+      <div style="height:8px"></div>
+      <button class="btn" id="btnBuildList" disabled>Construir lista de perfis</button>
+
+      <div class="divider"></div>
+      <h2>Shortlist (destaques)</h2>
+      <p class="help">Marque os perfis na lista da direita para adicioná-los aqui. Você pode remover clicando no X.</p>
+      <div id="shortlist" class="list"></div>
+
+      <div class="divider"></div>
+      <h2>Chave da API Torn</h2>
+      <input id="apiKey" type="text" placeholder="Cole sua chave de API Torn (não salvamos)" />
+      <p class="help">Campos consultados: <code>life.current</code>, <code>life.maximum</code>, <code>status.state</code>, <code>status.description</code>, <code>last_action.status</code>, <code>last_action.relative</code>.</p>
+      <div class="sticky-actions">
+        <button class="btn" id="btnFetchSelected" disabled>Buscar status dos selecionados</button>
+      </div>
+    </section>
+
+    <!-- Lado Direito: Lista de Perfis + Resultados -->
+    <section class="card">
+      <h2>Perfis da planilha</h2>
+      <div id="profilesList" class="list" style="min-height: 120px;"></div>
+      <p class="small" id="profilesCount"></p>
+
+      <div class="divider"></div>
+      <h2>Status dos selecionados</h2>
+      <div id="results" class="grid"></div>
+      <p id="statusMessage" class="loading"></p>
+    </section>
+  </main>
+
+  <script>
+    // Estado em memória
+    const state = {
+      rawRows: [], // linhas brutas do CSV (objetos por cabeçalho)
+      columns: [],
+      mappings: { id: null, name: null },
+      profiles: [], // [{id, name}]
+      selectedIds: new Set(),
+    };
+
+    // Util: detectar delimitador simples (vírgula ou ponto e vírgula)
+    function detectDelimiter(headerLine) {
+      const commas = (headerLine.match(/,/g) || []).length;
+      const semis = (headerLine.match(/;/g) || []).length;
+      return semis > commas ? ';' : ',';
+    }
+
+    // Parser CSV simples (sem aspas complexas)
+    function parseCSV(text) {
+      const lines = text.trim().split(/\r?\n/);
+      if (lines.length === 0) return [];
+      const delim = detectDelimiter(lines[0]);
+      const headers = lines[0].split(delim).map(h => h.trim());
+      const rows = [];
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        const cols = lines[i].split(delim);
+        const obj = {};
+        headers.forEach((h, idx) => { obj[h] = (cols[idx] ?? '').trim(); });
+        rows.push(obj);
+      }
+      return { headers, rows };
+    }
+
+    // UI refs
+    const csvUrl = document.getElementById('csvUrl');
+    const csvText = document.getElementById('csvText');
+    const btnFetchCsv = document.getElementById('btnFetchCsv');
+    const btnParseCsv = document.getElementById('btnParseCsv');
+    const btnClearCsv = document.getElementById('btnClearCsv');
+    const colId = document.getElementById('colId');
+    const colName = document.getElementById('colName');
+    const btnBuildList = document.getElementById('btnBuildList');
+    const profilesList = document.getElementById('profilesList');
+    const profilesCount = document.getElementById('profilesCount');
+    const shortlist = document.getElementById('shortlist');
+    const apiKey = document.getElementById('apiKey');
+    const btnFetchSelected = document.getElementById('btnFetchSelected');
+    const results = document.getElementById('results');
+    const statusMessage = document.getElementById('statusMessage');
+
+    // Preenche selects de mapeamento
+    function fillMappingSelectors(headers) {
+      colId.innerHTML = ''; colName.innerHTML = '';
+      for (const h of headers) {
+        const o1 = document.createElement('option'); o1.value = h; o1.textContent = h; colId.appendChild(o1.cloneNode(true));
+        const o2 = document.createElement('option'); o2.value = h; o2.textContent = h; colName.appendChild(o2);
+      }
+      // Tentativa de detecção automática
+      const idGuess = headers.find(h => /^(xid|id|player_id|userid|user_id)$/i.test(h)) || headers[0];
+      const nameGuess = headers.find(h => /^(name|nome|player|username|user|nick)$/i.test(h)) || headers[1] || headers[0];
+      colId.value = idGuess; colName.value = nameGuess;
+      state.mappings.id = idGuess; state.mappings.name = nameGuess;
+      btnBuildList.disabled = false;
+    }
+
+    // Renderização da lista principal de perfis
+    function renderProfiles() {
+      profilesList.innerHTML = '';
+      for (const p of state.profiles) {
+        const el = document.createElement('div');
+        el.className = 'item';
+        const left = document.createElement('div');
+        left.className = 'meta';
+
+        const title = document.createElement('div');
+        title.innerHTML = `<b>${escapeHtml(p.name || '(sem nome)')}</b> <span class="small">#${p.id}</span>`;
+        const link = document.createElement('a');
+        link.href = `https://www.torn.com/profiles.php?XID=${encodeURIComponent(p.id)}`;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = 'Abrir perfil';
+
+        left.appendChild(title); left.appendChild(link);
+
+        const right = document.createElement('div');
+        const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = state.selectedIds.has(p.id);
+        cb.addEventListener('change', () => {
+          if (cb.checked) { state.selectedIds.add(p.id); addToShortlist(p); }
+          else { state.selectedIds.delete(p.id); removeFromShortlist(p.id); }
+          btnFetchSelected.disabled = state.selectedIds.size === 0;
+        });
+        right.appendChild(cb);
+
+        el.appendChild(left); el.appendChild(right);
+        profilesList.appendChild(el);
+      }
+      profilesCount.textContent = `${state.profiles.length} perfil(is) carregado(s).`;
+    }
+
+    // Shortlist UI
+    function addToShortlist(p) {
+      if (document.getElementById('short-' + p.id)) return; // já existe
+      const el = document.createElement('div');
+      el.className = 'item'; el.id = 'short-' + p.id;
+      const left = document.createElement('div'); left.className = 'meta';
+      left.innerHTML = `<b>${escapeHtml(p.name || '(sem nome)')}</b> <span class="small">#${p.id}</span>`;
+      const right = document.createElement('div');
+      const rm = document.createElement('button'); rm.className = 'btn ghost'; rm.textContent = 'Remover';
+      rm.addEventListener('click', () => {
+        state.selectedIds.delete(p.id);
+        const chk = [...profilesList.querySelectorAll('input[type="checkbox"]')]
+          .find(x => x.closest('.item').querySelector('.small')?.textContent === '#' + p.id);
+        if (chk) chk.checked = false;
+        el.remove();
+        btnFetchSelected.disabled = state.selectedIds.size === 0;
+      });
+      right.appendChild(rm);
+      el.appendChild(left); el.appendChild(right);
+      shortlist.appendChild(el);
+    }
+    function removeFromShortlist(id) {
+      const el = document.getElementById('short-' + id); if (el) el.remove();
+    }
+
+    // Torn API
+    async function fetchTornUser(id, key) {
+      // selections "basic" deve trazer os campos solicitados
+      const url = `https://api.torn.com/user/${encodeURIComponent(id)}?selections=basic&key=${encodeURIComponent(key)}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Falha ao consultar ${id}: HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.error) throw new Error(`Erro API ${id}: ${data.error.error} (code ${data.error.code})`);
+      return data;
+    }
+
+    function renderResultCard(player, data) {
+      const card = document.createElement('div');
+      card.className = 'stat';
+      const lifeCur = data?.life?.current ?? '-';
+      const lifeMax = data?.life?.maximum ?? '-';
+      const stState = data?.status?.state ?? '-';
+      const stDesc = data?.status?.description ?? '-';
+      const laStatus = data?.last_action?.status ?? '-';
+      const laRel = data?.last_action?.relative ?? '-';
+
+      const hpPct = (Number(lifeCur) && Number(lifeMax)) ? Math.round((lifeCur / lifeMax) * 100) : null;
+      const hpStr = hpPct !== null ? `${lifeCur} / ${lifeMax} (${hpPct}%)` : `${lifeCur} / ${lifeMax}`;
+
+      card.innerHTML = `
+        <h3>${escapeHtml(player.name || '(sem nome)')} <span class="muted">#${player.id}</span></h3>
+        <div class="muted">Perfil: <a href="https://www.torn.com/profiles.php?XID=${encodeURIComponent(player.id)}" target="_blank" rel="noopener">abrir</a></div>
+        <div class="divider" style="margin:8px 0"></div>
+        <div><span class="badge">Vida</span> ${hpStr}</div>
+        <div><span class="badge">Status</span> ${escapeHtml(stState)}${stDesc ? ` — <span class="muted">${escapeHtml(stDesc)}</span>` : ''}</div>
+        <div><span class="badge">Última ação</span> ${escapeHtml(laStatus)} <span class="muted">(${escapeHtml(laRel)})</span></div>
+      `;
+      results.appendChild(card);
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[s]));
+    }
+
+    // Handlers
+    btnFetchCsv.addEventListener('click', async () => {
+      const url = csvUrl.value.trim();
+      if (!url) { alert('Informe um URL CSV publicado, ou cole os dados no campo de texto.'); return; }
+      btnFetchCsv.disabled = true; btnFetchCsv.textContent = 'Baixando...';
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const text = await res.text();
+        csvText.value = text;
+      } catch (e) {
+        alert('Falha ao baixar CSV: ' + e.message);
+      } finally { btnFetchCsv.disabled = false; btnFetchCsv.textContent = 'Buscar CSV'; }
+    });
+
+    btnParseCsv.addEventListener('click', () => {
+      const text = csvText.value.trim();
+      if (!text) { alert('Cole o CSV ou forneça o URL.'); return; }
+      const parsed = parseCSV(text);
+      if (!parsed.headers || parsed.headers.length === 0 || parsed.rows.length === 0) {
+        alert('Não foi possível ler o CSV. Verifique o cabeçalho e os dados.'); return;
+      }
+      state.rawRows = parsed.rows;
+      state.columns = parsed.headers;
+      fillMappingSelectors(parsed.headers);
+      alert('CSV carregado! Agora mapeie as colunas e clique em "Construir lista de perfis".');
+    });
+
+    btnClearCsv.addEventListener('click', () => {
+      csvUrl.value = ''; csvText.value = ''; profilesList.innerHTML = ''; results.innerHTML = ''; shortlist.innerHTML='';
+      profilesCount.textContent = ''; state.rawRows = []; state.columns = []; state.profiles = []; state.selectedIds.clear();
+      btnBuildList.disabled = true; btnFetchSelected.disabled = true; statusMessage.textContent='';
+      colId.innerHTML = ''; colName.innerHTML = '';
+    });
+
+    colId.addEventListener('change', () => state.mappings.id = colId.value);
+    colName.addEventListener('change', () => state.mappings.name = colName.value);
+
+    btnBuildList.addEventListener('click', () => {
+      const idKey = state.mappings.id; const nameKey = state.mappings.name;
+      if (!idKey) { alert('Selecione a coluna de ID (XID).'); return; }
+      const items = [];
+      for (const r of state.rawRows) {
+        const id = String(r[idKey] ?? '').trim();
+        if (!id || !/^\d+$/.test(id)) continue; // apenas números
+        const name = String(r[nameKey] ?? '').trim();
+        items.push({ id, name });
+      }
+      state.profiles = items;
+      state.selectedIds.clear(); shortlist.innerHTML='';
+      renderProfiles();
+      btnFetchSelected.disabled = true;
+    });
+
+    btnFetchSelected.addEventListener('click', async () => {
+      const key = apiKey.value.trim();
+      if (!key) { alert('Cole sua chave da API Torn.'); return; }
+      const ids = [...state.selectedIds];
+      if (ids.length === 0) { alert('Selecione ao menos um perfil.'); return; }
+      results.innerHTML=''; statusMessage.textContent = `Buscando ${ids.length} usuário(s)...`;
+      try {
+        for (const id of ids) {
+          const player = state.profiles.find(p => p.id === id) || { id, name: '' };
+          try {
+            const data = await fetchTornUser(id, key);
+            renderResultCard(player, data);
+          } catch (e) {
+            const errCard = document.createElement('div');
+            errCard.className = 'stat';
+            errCard.innerHTML = `<h3>${escapeHtml(player.name || '(sem nome)')} <span class="muted">#${player.id}</span></h3>
+            <div class="danger">Erro ao buscar: ${escapeHtml(e.message)}</div>`;
+            results.appendChild(errCard);
+          }
+        }
+      } finally { statusMessage.textContent = 'Concluído.'; }
+    });
+
+    // Atalho: clique na lista para adicionar/remover
+    profilesList.addEventListener('click', (ev) => {
+      const item = ev.target.closest('.item');
+      if (!item) return;
+      const idText = item.querySelector('.small')?.textContent || '';
+      const id = idText.replace('#','');
+      const name = item.querySelector('b')?.textContent || '';
+      // Toggle via clique no container, mas ignore se clicou diretamente no checkbox/anchor/botão
+      if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'A' || ev.target.tagName === 'BUTTON') return;
+      const cb = item.querySelector('input[type="checkbox"]');
+      if (cb) cb.checked = !cb.checked;
+      if (cb.checked) { state.selectedIds.add(id); addToShortlist({ id, name }); }
+      else { state.selectedIds.delete(id); removeFromShortlist(id); }
+      btnFetchSelected.disabled = state.selectedIds.size === 0;
+    });
+  </script>
+</body>
+</html>
