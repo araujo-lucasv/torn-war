@@ -154,6 +154,65 @@
       return { headers, rows };
     }
 
+
+    function detectDelimiter(headerLine) {
+  // se tiver ponto e vírgula, priorizo ;, senão ,
+  return headerLine.includes(';') ? ';' : ',';
+}
+
+// Split seguro de uma linha CSV respeitando aspas
+function splitCsvLine(line, delim) {
+  const out = [];
+  let cur = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      // Toggle de aspas ou escape de aspas duplas ("")
+      if (inQuotes && line[i + 1] === '"') {
+        cur += '"';
+        i++; // consome a segunda aspas
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === delim && !inQuotes) {
+      out.push(cur);
+      cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  out.push(cur);
+  return out;
+}
+
+// Parser CSV com suporte a aspas/virgulas internas
+function parseCSV(text) {
+  const lines = text.replace(/\r/g, '').split('\n').filter(l => l.length > 0);
+  if (lines.length === 0) return [];
+  const delim = detectDelimiter(lines[0]);
+
+  const headers = splitCsvLine(lines[0], delim).map(h => h.trim());
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = splitCsvLine(lines[i], delim).map(v => {
+      // remove aspas externas se existirem
+      let val = v.trim();
+      if (val.startsWith('"') && val.endsWith('"')) {
+        val = val.slice(1, -1).replace(/""/g, '"');
+      }
+      return val;
+    });
+
+    // monta objeto linha -> { header: valor }
+    const obj = {};
+    headers.forEach((h, idx) => { obj[h] = (cols[idx] ?? '').trim(); });
+    rows.push(obj);
+  }
+  return { headers, rows };
+}
+
     // UI refs
     const csvUrl = document.getElementById('csvUrl');
     const csvText = document.getElementById('csvText');
